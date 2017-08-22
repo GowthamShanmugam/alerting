@@ -1,21 +1,21 @@
+import smtplib
+
 from etcd import EtcdException
 from etcd import EtcdKeyNotFound
-import smtplib
 from socket import error
-from tendrl.alerting.handlers import AlertHandler
-from tendrl.alerting.notification import NotificationPlugin
-import tendrl.alerting.utils.central_store_util as central_store_util
 from tendrl.commons.config import load_config
 from tendrl.commons.event import Event
 from tendrl.commons.message import ExceptionMessage
-from tendrl.commons.message import Message
-
+from tendrl.commons.utils.log_utils import log
+from tendrl.notifier.notification import NotificationPlugin
+from tendrl.notifier.utils import central_store_util
 
 SSL_AUTHENTICATION = 'ssl'
 TLS_AUTHENTICATION = 'tls'
 
 
 class EmailHandler(NotificationPlugin):
+
     def get_config_help(self):
         config_help = {
             'email_id': {
@@ -58,17 +58,38 @@ class EmailHandler(NotificationPlugin):
         return config_help
 
     def set_destinations(self):
-        # TODO(anmolbabu):User configuration will not just be destination email
-        # but it would also include user level subscriptions the capability
-        # underneath needs to be enhanced for that.
-        user_configs = []
+        # TODO(gowtham):Get user ids from indexes who enabled
+        # email notification, for now it is come from users path
+        user_ids = []
         try:
             users = central_store_util.read_key('/_tendrl/users')
             for user in users.leaves:
-                user_key = user.key
+                try:
+                    email_notifications = central_store_util.read_key(
+                        "%s/email_notifications" % user.key
+                    ).value
+                    if email_notifications == "true":
+                        user_ids.append(user.key.split("/")[-1])
+                except EtcdKeyNotFound:
+                    continue
+            return user_ids
+        except (
+            EtcdException,
+            ValueError,
+            KeyError,
+            SyntaxError
+        ) as ex:
+            raise ex
+
+    def get_alert_destinations(self, user_ids):
+        # TODO(gowtham): get user emailds only who have enabled
+        # email notfication
+        user_configs = []
+        try:
+            for user_id in user_ids:
                 try:
                     user_email = central_store_util.read_key(
-                        "%s/email" % user_key
+                        "_tendrl/users/%s/email" % user_id
                     ).value
                     user_configs.append(user_email)
                 except EtcdKeyNotFound:
@@ -86,29 +107,11 @@ class EmailHandler(NotificationPlugin):
         return "Subject: [Alert] %s, %s threshold breached\n\n%s" % (
             alert.resource, alert.severity, alert.tags['message'])
 
-    def get_alert_destinations(self, alert):
-        for alert_handler in AlertHandler.handlers:
-            if alert.resource == alert_handler.handles:
-                #ideally iterate per user and formulate
-                #the list of eligible users
-                if NS.notification_subscriptions['%s_%s' % (
-                    self.name,
-                    alert_handler.representive_name
-                )] == "true":
-                    # Ideally it should be list of applicable users
-                    # but untill we enhance global config to user config_help
-                    # the behaviour is if notification enabled globally its
-                    # enabled for all users
-                    return self.user_configs
-                else:
-                    return None
-        return None
-
     def __init__(self):
         self.name = 'email'
         self.admin_config = load_config(
-            'alerting',
-            '/etc/tendrl/alerting/email.conf.yaml'
+            'notifier',
+            '/etc/tendrl/notifier/email.conf.yaml'
         )
         if not self.admin_config.get('auth'):
             self.admin_config['auth'] = ''
@@ -173,7 +176,21 @@ class EmailHandler(NotificationPlugin):
     def dispatch_notification(self, alert):
         server = None
         try:
-            self.set_destinations()
+            import pdb; pdb.set_trace();
+            user_ids = self.set_destinations()
+            self.get_alert_destinations(user_ids)
+            if (
+                not self.user_configs or
+                len(self.user_configs) == 0
+            ):
+                log(
+                    "error",
+                    "alerting",
+                    {
+                        "message": 'No destinations configured to send'
+                        'alert notification'
+                    }
+                )
         except (
             AttributeError,
             EtcdException,
@@ -196,16 +213,14 @@ class EmailHandler(NotificationPlugin):
         try:
             msg = self.format_message(alert)
             if not self.admin_config:
-                Event(
-                    Message(
-                        "debug",
-                        "alerting",
-                        {
-                            "message": 'Detected alert %s.'
-                            'But, admin config is a must to send'
-                            ' notification' % msg
-                        }
-                    )
+                log(
+                    "debug",
+                    "alerting",
+                    {
+                        "message": 'Detected alert %s.'
+                        'But, admin config is a must to send'
+                        ' notification' % msg
+                    }
                 )
                 return
             server = self.get_mail_client()
@@ -215,36 +230,18 @@ class EmailHandler(NotificationPlugin):
                     self.admin_config['email_id'],
                     self.admin_config['email_pass']
                 )
-            alert_destinations = self.get_alert_destinations(alert)
-            if (
-                not alert_destinations or
-                len(alert_destinations) == 0
-            ):
-                Event(
-                    Message(
-                        "error",
-                        "alerting",
-                        {
-                            "message": 'No destinations configured to send'
-                            ' %s alert notification' % msg
-                        }
-                    )
-                )
-                return
             server.sendmail(
                 self.admin_config['email_id'],
                 self.user_configs,
                 msg
             )
-            Event(
-                Message(
-                    "debug",
-                    "alerting",
-                    {
-                        "message": 'Sent mail to %s to alert about %s'
-                        % (self.user_configs, msg)
-                    }
-                )
+            log(
+                "debug",
+                "alerting",
+                {
+                    "message": 'Sent mail to %s to alert about %s'
+                    % (self.user_configs, msg)
+                }
             )
         except (
             error,
@@ -265,6 +262,7 @@ class EmailHandler(NotificationPlugin):
                     }
                 )
             )
+            raise ex
         finally:
             if server:
                 server.close()

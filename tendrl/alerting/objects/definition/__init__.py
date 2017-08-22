@@ -12,14 +12,13 @@ class Definition(objects.BaseObject):
         super(Definition, self).__init__(*args, **kwargs)
         self.data = pkg_resources.resource_string(
             __name__,
-            "alerting.yaml"
+            "notifier.yaml"
         )
         self._parsed_defs = yaml.safe_load(self.data)
-        self.value = '_NS/alerting/definitions'
+        self.value = '_NS/notifier/definitions'
 
     def get_parsed_defs(self):
         if self._parsed_defs:
             return self._parsed_defs
-        
         self._parsed_defs = yaml.safe_load(self.data)
         return self._parsed_defs

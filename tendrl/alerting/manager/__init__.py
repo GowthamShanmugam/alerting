@@ -1,28 +1,21 @@
 import etcd
 import gevent
-from gevent.queue import Queue
 import signal
-from tendrl.alerting.notification import NotificationPluginManager
-from tendrl.alerting.sync import TendrlAlertingSync
-from tendrl.alerting.watcher import AlertsWatchManager
-from tendrl.alerting.handlers import AlertHandlerManager
-from tendrl.alerting import AlertingNS
+
+from gevent.queue import Queue
 from tendrl.commons.event import Event
 from tendrl.commons.message import ExceptionMessage
-from tendrl.commons.message import Message
 from tendrl.commons import TendrlNS
+from tendrl.commons.utils.log_utils import log
+from tendrl.notifier.notification import NotificationPluginManager
+from tendrl.notifier import NotifierNS
 
 
-class TendrlAlertingManager(object):
+class TendrlNotifierManager(object):
     def __init__(self):
         try:
-            NS.alert_queue = Queue()
-            NS.alert_types = []
-            NS.notification_medium = []
-            self.alert_handler_manager = AlertHandlerManager()
-            NS.notification_plugin_manager = NotificationPluginManager()
-            self.watch_manager = AlertsWatchManager()
-            self.sync_thread = TendrlAlertingSync()
+            NS.notification_queue = Queue()
+            self.notification_plugin_manager = NotificationPluginManager()
         except (
             AttributeError,
             SyntaxError,
@@ -36,7 +29,7 @@ class TendrlAlertingManager(object):
                     priority="debug",
                     publisher="alerting",
                     payload={
-                        "message": 'Error intializing alerting manager',
+                        "message": 'Error intializing notification manager',
                         "exception": ex
                     }
                 )
@@ -44,42 +37,35 @@ class TendrlAlertingManager(object):
             raise ex
 
     def start(self):
-        self.alert_handler_manager.start()
-        self.sync_thread.start()
-        self.watch_manager.start()
+        self.notification_plugin_manager.start()
 
     def stop(self):
-        self.watch_manager.stop()
-        self.sync_thread.stop()
+        self.notification_plugin_manager.stop()
 
 
 def main():
-    AlertingNS()
+    NotifierNS()
     TendrlNS()
-    NS.alerting.definitions.save()
-    NS.alerting.config.save()
-    NS.publisher_id = "alerting"
-    
+    NS.notifier.definitions.save()
+    NS.notifier.config.save()
+    NS.publisher_id = "notifier"
+
     if NS.config.data.get("with_internal_profiling", False):
         from tendrl.commons import profiler
         profiler.start()
-        
-    tendrl_alerting_manager = TendrlAlertingManager()
-    tendrl_alerting_manager.start()
-
+    tendrl_notifier_manager = TendrlNotifierManager()
+    tendrl_notifier_manager.start()
     complete = gevent.event.Event()
 
-    def terminate(sig, frame):
-        Event(
-            Message(
-                "debug",
-                "alerting",
-                {
-                    "message": 'Signal handler: stopping',
-                }
-            )
+    def terminate():
+        log(
+            "debug",
+            "notifier",
+            {
+                "message": 'Signal handler: stopping',
+            }
         )
-        tendrl_alerting_manager.stop()
+        tendrl_notifier_manager.stop()
         complete.set()
 
     gevent.signal(signal.SIGINT, terminate)

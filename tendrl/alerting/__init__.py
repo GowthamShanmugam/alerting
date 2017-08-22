@@ -1,10 +1,10 @@
 from tendrl.commons import TendrlNS
 
 
-class AlertingNS(TendrlNS):
+class NotifierNS(TendrlNS):
     def __init__(
         self,
-        ns_name='alerting',
-        ns_src='tendrl.alerting'
+        ns_name='notifier',
+        ns_src='tendrl.notifier'
     ):
-        super(AlertingNS, self).__init__(ns_name, ns_src)
+        super(NotifierNS, self).__init__(ns_name, ns_src)

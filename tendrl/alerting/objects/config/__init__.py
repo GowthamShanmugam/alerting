@@ -11,8 +11,8 @@ class Config(objects.BaseObject):
 
         if config is None:
             config = cmn_config.load_config(
-                'alerting',
-                "/etc/tendrl/alerting/alerting.conf.yaml"
+                'notifier',
+                "/etc/tendrl/notifier/notifier.conf.yaml"
             )
         self.data = config
-        self.value = '_NS/alerting/config'
+        self.value = '_NS/notifier/config'
