@@ -25,8 +25,8 @@ Builds
 Code Coverage
 -------------
 
-.. image:: https://coveralls.io/repos/github/Tendrl/alerting/badge.svg?branch=master
-    :target: https://coveralls.io/github/Tendrl/alerting?branch=master
+.. image:: https://coveralls.io/repos/github/Tendrl/notifier/badge.svg?branch=master
+    :target: https://coveralls.io/github/Tendrl/notifier?branch=master
 
 Developer/Install documentation
 -----------------------
